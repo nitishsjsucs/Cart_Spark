@@ -1,0 +1,459 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CartSpark — Retail Recommender</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    body{background:linear-gradient(180deg,#f8fafc 0%,#f1f5f9 100%)}
+    .glass{backdrop-filter:blur(8px);background:rgba(255,255,255,.75)}
+    .btn{padding:.5rem .75rem;border:1px solid #e2e8f0;border-radius:.75rem;font-size:.875rem}
+    .btn:hover{background:#f8fafc}
+    .icon-btn{display:grid;place-items:center;border:1px solid #e2e8f0;width:40px;height:40px;border-radius:.75rem}
+    .icon-btn:hover{background:#f8fafc}
+    .qty{display:flex;align-items:center;gap:.25rem}
+    .qty button{width:28px;height:28px;border:1px solid #e2e8f0;border-radius:.5rem}
+    .qty span{min-width:24px;text-align:center;font-weight:600}
+    
+    @keyframes bounce {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.25); }
+    }
+    .animate-bounce-once {
+      animation: bounce 0.4s ease-in-out;
+    }
+    
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(-10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .fade-in {
+      animation: fadeIn 0.3s ease-out;
+    }
+  </style>
+</head>
+<body class="text-slate-900">
+
+<!-- ===== Header ===== -->
+<header class="sticky top-0 z-20 bg-white/80 glass border-b border-slate-200">
+  <div class="max-w-7xl mx-auto px-5 py-3 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <div class="h-9 w-9 grid place-items-center rounded-xl bg-indigo-600 text-white text-xl shadow">⚡</div>
+      <div>
+        <h1 class="font-bold text-xl leading-tight">CartSpark</h1>
+        <p class="text-xs text-slate-600 -mt-0.5">Smart add-ons, data-first.</p>
+      </div>
+    </div>
+    <div class="flex items-center gap-2">
+      <button id="cartBtn" class="icon-btn relative" title="Cart">
+        <span class="text-lg">🛒</span>
+        <span id="cartBadge" class="absolute -top-2 -right-2 text-[11px] px-1.5 py-0.5 rounded-lg bg-indigo-600 text-white">0</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<!-- ===== Main ===== -->
+<main class="max-w-7xl mx-auto p-5 md:p-6">
+  <div class="grid lg:grid-cols-3 gap-6">
+
+    <!-- Catalog -->
+    <section class="glass rounded-2xl shadow border border-slate-200 p-4">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="font-semibold">Catalog</h2>
+        <span class="text-xs text-slate-500" id="catalogCount"></span>
+      </div>
+      <div class="flex items-center gap-2 mb-3">
+        <input id="searchInput" placeholder="Search items (e.g., 'sensor')"
+               class="w-full border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+        <button id="refreshBtn" class="btn" title="Reload catalog">↻</button>
+      </div>
+      <div id="catalogList" class="space-y-2 max-h-[460px] overflow-auto text-sm"></div>
+    </section>
+
+    <!-- Cart (middle column) -->
+    <section class="glass rounded-2xl shadow border border-slate-200 p-4">
+      <h2 class="font-semibold mb-3">Cart</h2>
+
+      <div id="cartList" class="space-y-2 min-h-[58px]"></div>
+
+      <div class="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-600">
+        <div class="p-2 rounded-lg border bg-white">Distinct items: <b id="distinctCount">0</b></div>
+        <div class="p-2 rounded-lg border bg-white">Total units: <b id="cartUnits">0</b></div>
+      </div>
+
+      <div class="mt-3 p-3 rounded-xl border bg-white text-sm">
+        <div class="flex justify-between"><span>Subtotal</span><b id="subtotal">$0.00</b></div>
+        <div class="flex justify-between text-slate-600 text-[13px]"><span>Tax</span><span id="tax">$0.00</span></div>
+        <div class="flex justify-between mt-2 text-lg"><span>Total</span><b id="total">$0.00</b></div>
+      </div>
+
+      <!-- Proceed to checkout -->
+      <div class="mt-3">
+        <button id="checkoutBtn"
+                class="w-full btn bg-indigo-600 text-white hover:bg-indigo-700 border-indigo-600">
+          Proceed to Checkout
+        </button>
+      </div>
+    </section>
+
+    <!-- Recommendations -->
+    <section class="glass rounded-2xl shadow border border-slate-200 p-4">
+      <div class="flex items-center justify-between mb-2">
+        <h2 class="font-semibold">Recommendations</h2>
+        <div class="flex items-center gap-2">
+          <label class="text-xs text-slate-500">Top-K</label>
+          <select id="topK" class="border rounded-xl px-2 py-1 text-xs">
+            <option value="5">5</option>
+            <option value="8" selected>8</option>
+            <option value="12">12</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="recsList" class="space-y-2 min-h-[76px] mb-4"></div>
+
+      <div class="rounded-xl border p-3 bg-white">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-sm font-medium">Lift chart (Top-K)</span>
+          <span class="text-[11px] text-slate-500">Higher is better</span>
+        </div>
+        <canvas id="liftChart" height="190"></canvas>
+      </div>
+    </section>
+
+  </div>
+</main>
+
+<!-- ===== Checkout Drawer ===== -->
+<div id="drawerBackdrop" class="fixed inset-0 bg-black/40 hidden"></div>
+
+<aside id="drawer"
+       class="fixed top-0 right-0 h-full w-[380px] bg-white shadow-2xl translate-x-full transition
+              duration-200 ease-out flex flex-col">
+  <div class="px-4 py-3 border-b flex items-center justify-between">
+    <div class="font-semibold">Your cart</div>
+    <button id="drawerClose" class="icon-btn" title="Close">✕</button>
+  </div>
+
+  <div id="drawerItems" class="p-4 flex-1 overflow-auto space-y-2 text-sm"></div>
+
+  <div class="p-4 border-t space-y-2">
+    <div class="flex justify-between"><span>Subtotal</span><b id="d-subtotal">$0.00</b></div>
+    <div class="flex justify-between text-slate-600 text-[13px]"><span>Tax</span><span id="d-tax">$0.00</span></div>
+    <div class="flex justify-between text-lg"><span>Total</span><b id="d-total">$0.00</b></div>
+
+    <button id="payBtn"
+            class="w-full btn bg-indigo-600 text-white hover:bg-indigo-700 border-indigo-600 mt-2">
+      Pay (demo)
+    </button>
+    <p class="text-[11px] text-slate-500 text-center">This is a demo UI — no real payment is processed.</p>
+  </div>
+</aside>
+
+<!-- ===== Scripts ===== -->
+<script>
+  // ---- Config ----
+  const API = "http://127.0.0.1:8000";
+  const TAX_RATE = 0.0875;
+
+  // ---- State ----
+  const state = { catalog: [], cart: {}, recs: [] };
+  let chart;
+
+  // ---- Helpers ----
+  const el = (t, c, tx) => { const e = document.createElement(t); if (c) e.className = c; if (tx !== undefined) e.textContent = tx; return e; };
+  const fmt = n => `$${n.toFixed(2)}`;
+  function priceOf(name) { // deterministic fake price
+    let h = 0; for (let i=0;i<name.length;i++){ h=(h*31 + name.charCodeAt(i))>>>0; }
+    const cents = 800 + (h % 22000); return cents / 100;
+  }
+  const cartKeys = () => Object.keys(state.cart);
+  const totalUnits = () => cartKeys().reduce((s,k)=>s+state.cart[k],0);
+
+  // ---- Chart ----
+  function getOrCreateChart(){
+    const ctx = document.getElementById('liftChart');
+    if (chart) return chart;
+    chart = new Chart(ctx, {
+      type:'bar',
+      data:{ labels:[], datasets:[{label:'Lift Σ', data:[]}] },
+      options:{ responsive:true, plugins:{legend:{display:false}},
+        scales:{x:{grid:{display:false}}, y:{beginAtZero:true}} }
+    });
+    return chart;
+  }
+  function updateChart(recs){
+    const c = getOrCreateChart();
+    c.data.labels = (recs||[]).map(r => r.candidate_item.slice(0,24)+(r.candidate_item.length>24?'…':''));
+    c.data.datasets[0].data = (recs||[]).map(r => +(r.lift_sum||0).toFixed(2));
+    c.update();
+  }
+
+  // ---- Totals ----
+  function recalcTotals(){
+    const sub = cartKeys().reduce((s,k)=>s+priceOf(k)*state.cart[k],0);
+    const tax = sub*TAX_RATE, tot = sub+tax;
+    document.getElementById('subtotal').textContent = fmt(sub);
+    document.getElementById('tax').textContent      = fmt(tax);
+    document.getElementById('total').textContent    = fmt(tot);
+    document.getElementById('cartBadge').textContent = totalUnits();
+    document.getElementById('distinctCount').textContent = cartKeys().length;
+    document.getElementById('cartUnits').textContent = totalUnits();
+  }
+
+  // ---- Catalog ----
+  function renderCatalog(){
+    const list = document.getElementById('catalogList'); list.innerHTML='';
+    const q = document.getElementById('searchInput').value.toLowerCase();
+    const items = state.catalog.filter(x => x.toLowerCase().includes(q));
+    document.getElementById('catalogCount').textContent = `${items.length} results`;
+
+    items.slice(0, 250).forEach(item=>{
+      const row = el('div','flex items-center justify-between gap-2 rounded-lg border bg-white px-2 py-2');
+      const left = el('div','flex flex-col');
+      left.append(el('div','text-sm line-clamp-2', item));
+      left.append(el('div','text-[11px] text-slate-500', fmt(priceOf(item))));
+      row.append(left);
+      const b = el('button','btn','Add'); b.onclick = () => addToCart(item,1);
+      row.append(b);
+      list.append(row);
+    });
+  }
+
+  // ---- Cart lines ----
+  function cartLine(item){
+    const row = el('div','flex items-center justify-between gap-2 rounded-lg border bg-white px-2 py-2');
+    const left = el('div','flex flex-col');
+    left.append(el('div','text-sm line-clamp-2', item));
+    left.append(el('div','text-[11px] text-slate-500', `${fmt(priceOf(item))} × ${state.cart[item]} = ${fmt(priceOf(item)*state.cart[item])}`));
+    row.append(left);
+
+    const right = el('div','flex items-center gap-2');
+    const qty = el('div','qty');
+    const minus = el('button','','–'); minus.onclick = ()=> addToCart(item,-1);
+    const qv = el('span','', state.cart[item]);
+    const plus = el('button','','+'); plus.onclick = ()=> addToCart(item, 1);
+    qty.append(minus,qv,plus);
+    const rm = el('button','btn text-xs','Remove'); rm.onclick = ()=> removeLine(item);
+    right.append(qty,rm);
+    row.append(right);
+    return row;
+  }
+
+  function renderCart(){
+    const list = document.getElementById('cartList'); list.innerHTML='';
+    const keys = cartKeys();
+    if (!keys.length) {
+      list.append(el('div','text-slate-500 text-sm','Cart is empty.'));
+    } else {
+      keys.forEach(k => list.append(cartLine(k)));
+    }
+    recalcTotals();
+    fetchRecs();
+  }
+
+  // ---- Recs ----
+  function renderRecs(){
+    const list = document.getElementById('recsList'); list.innerHTML='';
+    if (!state.recs.length) {
+      list.append(el('div','text-slate-500 text-sm','No relevant recommendations.'));
+      updateChart([]);
+      return;
+    }
+
+    state.recs.forEach((r, idx)=>{
+      const row = el('div','border rounded-xl p-2 bg-white');
+      const top = el('div','flex items-center justify-between gap-2');
+
+      const left = el('div','flex flex-col');
+      left.append(el('div','text-sm font-medium line-clamp-2', r.candidate_item));
+      left.append(el('div','text-[11px] text-slate-500', fmt(priceOf(r.candidate_item))));
+      
+      // Add visual badges
+      const badges = el('div', 'flex gap-1 mt-1 flex-wrap');
+      if (idx === 0) {
+        badges.append(el('span', 'text-[10px] px-1.5 py-0.5 rounded bg-green-100 text-green-700 font-medium', '⭐ Top Pick'));
+      }
+      if (r.lift_sum > 2.0) {
+        badges.append(el('span', 'text-[10px] px-1.5 py-0.5 rounded bg-red-100 text-red-700', '🔥 Strong Match'));
+      }
+      if (r.cooccurrence_count_sum > 10) {
+        badges.append(el('span', 'text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-700', '📊 Popular Combo'));
+      }
+      if (r.support > 0.15) {
+        badges.append(el('span', 'text-[10px] px-1.5 py-0.5 rounded bg-purple-100 text-purple-700', '⚡ Bestseller'));
+      }
+      if (badges.children.length > 0) {
+        left.append(badges);
+      }
+      
+      top.append(left);
+
+      const b = el('button','btn text-xs','Add'); b.onclick = ()=> addToCart(r.candidate_item,1);
+      top.append(b);
+      row.append(top);
+
+      const meta = el('div','text-[11px] text-slate-500 mt-1',
+        `lift=${(r.lift_sum||0).toFixed(2)} · pairs=${r.cooccurrence_count_sum||0} · support=${((r.support||0)*100).toFixed(1)}%`);
+      row.append(meta);
+
+      if (r.reasons && r.reasons.length){
+        const det = el('details','mt-1');
+        const sum = el('summary','cursor-pointer text-[11px] text-slate-600','Why this? (per-item)');
+        det.append(sum);
+        r.reasons.forEach(rr=>{
+          det.append(el('div','text-[11px] text-slate-600 mt-1',
+            `• with ${rr.from_item}: lift=${rr.lift_with_item.toFixed(2)}, conf=${(rr.confidence_from_item*100).toFixed(1)}%, pairs=${rr.pair_count}`));
+        });
+        row.append(det);
+      }
+
+      list.append(row);
+    });
+
+    updateChart(state.recs);
+  }
+
+  // ---- Cart ops ----
+  function addToCart(item, delta=1){
+    const q = (state.cart[item]||0) + delta;
+    state.cart[item] = Math.max(0, Math.min(99, q));
+    if (state.cart[item] === 0) delete state.cart[item];
+    
+    // Animate cart badge
+    const badge = document.getElementById('cartBadge');
+    badge.classList.remove('animate-bounce-once');
+    void badge.offsetWidth; // Trigger reflow
+    badge.classList.add('animate-bounce-once');
+    
+    renderCart();
+  }
+  function removeLine(item){ delete state.cart[item]; renderCart(); }
+
+  // ---- API ----
+  async function fetchCatalog(){
+    const r = await fetch(API + "/api/catalog");
+    const j = await r.json();
+    state.catalog = j.items || [];
+    renderCatalog();
+  }
+  async function fetchRecs(){
+    const topK = parseInt(document.getElementById('topK').value, 10);
+    const uniqueCart = Object.keys(state.cart);
+    const list = document.getElementById('recsList');
+    
+    if (!uniqueCart.length) { state.recs = []; renderRecs(); return; }
+
+    // Show loading state
+    list.innerHTML = '<div class="flex items-center gap-2 text-slate-500 text-sm p-4 animate-pulse">' +
+                     '<div class="text-lg">⚙️</div>' +
+                     '<span>Finding perfect recommendations...</span></div>';
+    updateChart([]);
+
+    try{
+      const r = await fetch(API + "/api/recommend", {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({ cart: uniqueCart, top_k: topK, min_pairs: 1, min_lift: 0.0 })
+      });
+      if (!r.ok) throw new Error(`API ${r.status}`);
+      const j = await r.json();
+      state.recs = j.items || [];
+      renderRecs();
+    }catch(e){
+      console.error("Recommend failed:", e);
+      // Show error state
+      list.innerHTML = '<div class="flex items-center gap-2 text-red-500 text-sm p-4">' +
+                       '<div class="text-lg">⚠️</div>' +
+                       '<span>Failed to load recommendations. Please check if the API is running.</span></div>';
+      state.recs = [];
+      updateChart([]);
+    }
+  }
+
+  // ---- Drawer ----
+  function renderDrawer(){
+    const wrap = document.getElementById('drawerItems'); wrap.innerHTML='';
+    const keys = cartKeys();
+    if (!keys.length){
+      wrap.append(el('div','text-slate-500 text-sm','Your cart is empty.'));
+    } else {
+      keys.forEach(k=>{
+        const row = el('div','flex items-center justify-between gap-2 rounded-lg border bg-white px-2 py-2');
+        const left = el('div','flex flex-col');
+        left.append(el('div','text-sm line-clamp-2',k));
+        left.append(el('div','text-[11px] text-slate-500', `${fmt(priceOf(k))} × ${state.cart[k]} = ${fmt(priceOf(k)*state.cart[k])}`));
+        row.append(left);
+
+        const right = el('div','flex items-center gap-2');
+        const minus = el('button','btn text-xs','–'); minus.onclick = ()=>{ addToCart(k,-1); renderDrawer(); };
+        const qty   = el('span','text-sm font-semibold', state.cart[k]);
+        const plus  = el('button','btn text-xs','+'); plus.onclick  = ()=>{ addToCart(k, 1); renderDrawer(); };
+        right.append(minus, qty, plus);
+
+        const rm = el('button','btn text-xs','Remove'); rm.onclick = ()=>{ removeLine(k); renderDrawer(); };
+        right.append(rm);
+        row.append(right);
+        wrap.append(row);
+      });
+    }
+    const sub = keys.reduce((s,k)=>s+priceOf(k)*state.cart[k],0);
+    const tax = sub*TAX_RATE, tot = sub+tax;
+    document.getElementById('d-subtotal').textContent = fmt(sub);
+    document.getElementById('d-tax').textContent      = fmt(tax);
+    document.getElementById('d-total').textContent    = fmt(tot);
+  }
+  function openDrawer(){ renderDrawer();
+    document.getElementById('drawerBackdrop').classList.remove('hidden');
+    document.getElementById('drawer').classList.remove('translate-x-full');
+  }
+  function closeDrawer(){
+    document.getElementById('drawerBackdrop').classList.add('hidden');
+    document.getElementById('drawer').classList.add('translate-x-full');
+  }
+  function payDemo(){
+    state.cart = {};
+    renderCart();
+    closeDrawer();
+    console.log('Demo payment complete');
+  }
+
+  // ===== Bind UI once DOM is ready (race-proof) =====
+  window.addEventListener('DOMContentLoaded', () => {
+    // search / filters
+    document.getElementById('searchInput').oninput = renderCatalog;
+    document.getElementById('topK').onchange       = fetchRecs;
+    document.getElementById('refreshBtn').onclick  = fetchCatalog;
+
+    // cart + drawer
+    const cb  = document.getElementById('checkoutBtn');
+    const ctb = document.getElementById('cartBtn');
+    const dc  = document.getElementById('drawerClose');
+    const db  = document.getElementById('drawerBackdrop');
+    const pay = document.getElementById('payBtn');
+
+    if (cb)  cb.onclick  = openDrawer;
+    if (ctb) ctb.onclick = openDrawer;
+    if (dc)  dc.onclick  = closeDrawer;
+    if (db)  db.onclick  = closeDrawer;
+    if (pay) pay.onclick = payDemo;
+
+    // keep drawer in sync if open
+    const _origRenderCart = renderCart;
+    renderCart = function(){
+      _origRenderCart();
+      if (!document.getElementById('drawer').classList.contains('translate-x-full')) {
+        renderDrawer();
+      }
+    };
+
+    // init
+    fetchCatalog().then(()=>{ renderCart(); recalcTotals(); });
+  });
+</script>
+
+</body>
+</html>
